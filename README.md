@@ -1,103 +1,63 @@
-# Shopify Google Sheets Integration
+```markdown
+# Shopify Data Fetcher
 
-This script allows you to fetch and update Shopify orders and refunds in a Google Sheets spreadsheet. It uses Shopify's API to retrieve the data and updates the specified sheets in your Google Spreadsheet.
+This script automates the process of fetching orders and refunds data from a Shopify store and updates corresponding Google Sheets. 
 
-## Prerequisites
+## Features
 
-- A Shopify store with API access.
-- A Google Sheets document with two sheets named "Orders" and "Refunds".
-- Google Apps Script editor access to your Google Sheets document.
+- Fetches orders and refunds data from Shopify.
+- Updates Google Sheets with the fetched data.
+- Sets up a time-based trigger to run the script every 10 minutes.
 
 ## Setup
 
-1. **Set Up API Credentials**
+1. **Google Script Properties**:
+    - Set the `SHOP_NAME` and `ACCESS_TOKEN` in your Google Script properties. These are necessary for authentication and accessing your Shopify store's data.
 
-   Replace the placeholder values with your actual Shopify store credentials and API version.
+2. **Google Sheets**:
+    - Create a Google Sheet with two sheets named `Orders` and `Refunds`.
+    - Ensure the first row of each sheet is reserved for headers.
 
-   ```javascript
-   const SHOP_NAME = 'your_shop_name';
-   const ACCESS_TOKEN = 'your_access_token';
-   const API_VERSION = '2023-07';
-   ```
+3. **Google Apps Script**:
+    - Copy and paste the following code into your Google Apps Script project.
 
-2. **Set Up Sheet Names**
-
-   Ensure your Google Sheets document has sheets named "Orders" and "Refunds". If your sheet names are different, update the constants accordingly.
-
-   ```javascript
-   const ORDERS_SHEET_NAME = 'Orders';
-   const REFUNDS_SHEET_NAME = 'Refunds';
-   ```
-
-3. **Copy the Script**
-
-   Copy the entire script into the Google Apps Script editor in your Google Sheets document.
-
-## Functions
-
-- **fetchShopifyData()**
-  
-  This function fetches orders and refunds from Shopify and updates the respective sheets in the Google Spreadsheet.
-
-- **getShopifyOrders()**
-
-  This helper function fetches all orders from Shopify.
-
-- **getShopifyRefunds()**
-
-  This helper function fetches all refunded orders from Shopify.
-
-- **updateOrdersSheet(sheet, orders, refunds)**
-
-  This helper function updates the orders sheet, removing refunded orders.
-
-- **updateRefundsSheet(sheet, refunds)**
-
-  This helper function updates the refunds sheet with new refunded orders.
-
-- **setupTrigger()**
-
-  This function sets up a trigger to run the `fetchShopifyData` function every 10 minutes.
-
-## Usage
-
-1. **Initial Run**
-
-   Run the `fetchShopifyData` function manually to ensure everything is working correctly.
-
-2. **Set Up Trigger**
-
-   Run the `setupTrigger` function to set up an automatic trigger that updates the sheets every 10 minutes.
-
-## Example Code
+## Script
 
 ```javascript
-// Set your Shopify API credentials
-const SHOP_NAME = 'your_shop_name';
-const ACCESS_TOKEN = 'your_access_token';
-const API_VERSION = '2023-07'; // Using a recent, stable version
-
-// Set the names of your sheets
-const ORDERS_SHEET_NAME = 'Orders';
-const REFUNDS_SHEET_NAME = 'Refunds';
+function getShopifyCredentials() {
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const shopName = scriptProperties.getProperty('SHOP_NAME');
+  const accessToken = scriptProperties.getProperty('ACCESS_TOKEN');
+  if (!shopName || !accessToken) {
+    Logger.log('Error: SHOP_NAME or ACCESS_TOKEN is not defined in the project properties.');
+    throw new Error('SHOP_NAME or ACCESS_TOKEN is not defined in the project properties.');
+  }
+  return {
+    shopName: shopName,
+    accessToken: accessToken
+  };
+}
 
 function fetchShopifyData() {
+  const credentials = getShopifyCredentials();
+  const SHOP_NAME = credentials.shopName;
+  const ACCESS_TOKEN = credentials.accessToken;
+  const API_VERSION = '2023-07';
+
+  Logger.log(`Using SHOP_NAME: ${SHOP_NAME} and ACCESS_TOKEN: ${ACCESS_TOKEN}`);
+
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  const ordersSheet = spreadsheet.getSheetByName(ORDERS_SHEET_NAME);
-  const refundsSheet = spreadsheet.getSheetByName(REFUNDS_SHEET_NAME);
+  const ordersSheet = spreadsheet.getSheetByName('Orders');
+  const refundsSheet = spreadsheet.getSheetByName('Refunds');
   
-  // Fetch orders and refunds
-  const orders = getShopifyOrders();
-  const refunds = getShopifyRefunds();
+  const orders = getShopifyOrders(SHOP_NAME, ACCESS_TOKEN, API_VERSION);
+  const refunds = getShopifyRefunds(SHOP_NAME, ACCESS_TOKEN, API_VERSION);
   
-  // Update refunds first
   updateRefundsSheet(refundsSheet, refunds);
-  
-  // Then update orders, removing any that have been refunded
   updateOrdersSheet(ordersSheet, orders, refunds);
 }
 
-function getShopifyOrders() {
+function getShopifyOrders(SHOP_NAME, ACCESS_TOKEN, API_VERSION) {
   const url = `https://${SHOP_NAME}.myshopify.com/admin/api/${API_VERSION}/orders.json?status=any`;
   const options = {
     method: 'get',
@@ -109,7 +69,7 @@ function getShopifyOrders() {
   return JSON.parse(response.getContentText()).orders;
 }
 
-function getShopifyRefunds() {
+function getShopifyRefunds(SHOP_NAME, ACCESS_TOKEN, API_VERSION) {
   const url = `https://${SHOP_NAME}.myshopify.com/admin/api/${API_VERSION}/orders.json?status=any&financial_status=refunded`;
   const options = {
     method: 'get',
@@ -122,23 +82,16 @@ function getShopifyRefunds() {
 }
 
 function updateOrdersSheet(sheet, orders, refunds) {
-  // Check if the sheet is empty
   if (sheet.getLastRow() <= 1) {
-    // If empty, add headers
     sheet.appendRow(['Order ID', 'Order Number', 'Email', 'Total Price', 'Created At']);
   }
   
   const data = sheet.getDataRange().getValues();
-  const headers = data.shift(); // Remove and store headers
-  
-  // Create a set of refunded order IDs for quick lookup
+  const headers = data.shift();
   const refundedOrderIds = new Set(refunds.map(refund => refund.id.toString()));
-  
-  // Filter out refunded orders and prepare new orders data
   const updatedData = data.filter(row => !refundedOrderIds.has(row[0].toString()));
   const existingOrderIds = new Set(updatedData.map(row => row[0].toString()));
   
-  // Add new orders
   orders.forEach(order => {
     if (!existingOrderIds.has(order.id.toString()) && !refundedOrderIds.has(order.id.toString())) {
       updatedData.push([
@@ -151,25 +104,20 @@ function updateOrdersSheet(sheet, orders, refunds) {
     }
   });
   
-  // Clear the sheet and rewrite with updated data
   sheet.clear();
   sheet.appendRow(headers);
   sheet.getRange(2, 1, updatedData.length, headers.length).setValues(updatedData);
 }
 
 function updateRefundsSheet(sheet, refunds) {
-  // Check if the sheet is empty
   if (sheet.getLastRow() <= 1) {
-    // If empty, add headers
     sheet.appendRow(['Order ID', 'Order Number', 'Email', 'Total Price', 'Created At']);
   }
   
   const data = sheet.getDataRange().getValues();
-  const headers = data.shift(); // Remove and store headers
-  
+  const headers = data.shift();
   const existingRefundIds = new Set(data.map(row => row[0].toString()));
   
-  // Add new refunds
   refunds.forEach(refund => {
     if (!existingRefundIds.has(refund.id.toString())) {
       data.push([
@@ -182,7 +130,6 @@ function updateRefundsSheet(sheet, refunds) {
     }
   });
   
-  // Clear the sheet and rewrite with updated data
   sheet.clear();
   sheet.appendRow(headers);
   sheet.getRange(2, 1, data.length, headers.length).setValues(data);
@@ -196,6 +143,17 @@ function setupTrigger() {
 }
 ```
 
+## Usage
+
+1. **Set Up Script Properties**:
+    - Navigate to `File > Project Properties > Script Properties` in the Google Apps Script editor.
+    - Add properties for `SHOP_NAME` and `ACCESS_TOKEN` with your Shopify store's name and access token.
+
+2. **Run the Script**:
+    - Manually run the `setupTrigger` function to set up the time-based trigger.
+    - The `fetchShopifyData` function will automatically run every 10 minutes to update your Google Sheets with the latest Shopify data.
+
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License.
+```
