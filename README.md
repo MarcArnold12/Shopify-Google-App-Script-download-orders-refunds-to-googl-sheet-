@@ -1,53 +1,47 @@
-# Shopify to Google Sheets Automation
+## Shopify Data Fetcher for Google Sheets
 
-This script automates the process of fetching orders and refunds from Shopify and saving them to a Google Sheets document. The script is set to run every 10 minutes, ensuring that your Google Sheets document is always up-to-date with the latest Shopify data.
+This script fetches order and refund data from your Shopify store and updates a Google Sheet with the information.
 
-## Prerequisites
+**Features:**
 
-- A Google account with access to Google Sheets
-- A Shopify store with API access
-- Google Apps Script environment
+* Fetches orders and refunds from Shopify Admin API.
+* Updates separate sheets for orders and refunds.
+* Handles filtering out refunded orders from the orders sheet.
+* Supports automatic updates with a time-based trigger (optional).
 
-## Setup Instructions
+**Requirements:**
 
-### 1. Create a new Google Sheets document
+* A Google Workspace account with Google Sheets.
+* A Shopify store with a configured Admin API access token.
 
-1. Go to [Google Sheets](https://sheets.google.com/).
-2. Create a new spreadsheet.
-3. Name the spreadsheet (e.g., "Shopify Automation").
+**Setup:**
 
-### 2. Open Google Apps Script Editor
+1. **Copy the Script:** Copy the entire script code provided.
+2. **Create a New Script:** In your Google Sheet, go to **Tools > Script editor**.
+3. **Paste the Script:** Paste the copied script code into the script editor.
+4. **Configure Credentials:** Replace the following placeholders with your actual values:
+    * `SHOP_NAME`: Your Shopify store name.
+    * `ACCESS_TOKEN`: Your Shopify Admin API access token (obtainable from the Shopify Partners Dashboard).
+    * `API_VERSION`: A recent, stable Shopify API version (e.g., "2023-07").
+5. **Configure Sheet Names (Optional):** Change `ORDERS_SHEET_NAME` and `REFUNDS_SHEET_NAME` if you want different sheet names.
+6. **Save the Script:** Click **File > Save**.
 
-1. In your Google Sheets document, go to `Extensions` > `Apps Script`.
-2. This will open the Google Apps Script editor.
+**Running the Script:**
 
-### 3. Add the Script
+* **Manual Run:** Click the **Run** button (triangle icon) in the script editor to manually fetch and update the sheets.
+* **Automatic Run (Optional):** Uncomment the `setupTrigger` function call within the script to set up a trigger that automatically runs the `fetchShopifyData` function every 10 minutes. 
 
-1. Delete any code in the editor and replace it with the script provided in the `script.js` file of this repository.
-2. Replace the placeholders `your_shopify_api_key`, `your_shopify_password`, and `your_shopify_store_name` with your actual Shopify API key, password, and store name.
+**Notes:**
 
-### 4. Authorize and Run the Script
+* This script uses Google Apps Script and requires enabling the "Sheets API" and "Url Fetch API" services in the script editor.
+* Ensure your Shopify API access token has appropriate permissions to access orders and refunds.
+* Be cautious when modifying the script logic to avoid unintended behavior.
 
-1. Click on the disk icon to save the script.
-2. Select the `scheduleFetch` function from the dropdown menu next to the run button (triangle icon).
-3. Click the run button to execute the function.
-4. Authorize the script when prompted. You will need to grant permissions for the script to access your Google Sheets and make requests to external services (Shopify).
+**Further Customization:**
 
-### 5. Verify the Triggers
+* This script provides a basic example. You can modify it to fit your specific needs, such as fetching additional data fields or formatting the sheet differently.
 
-1. Click on the clock icon to open the triggers menu.
-2. Ensure that triggers for `fetchOrders` and `fetchRefunds` are set to run every 10 minutes.
 
-## Usage
+**Disclaimer:**
 
-Once the script is set up and running, it will automatically fetch orders and refunds from your Shopify store and save them to the respective sheets in your Google Sheets document every 10 minutes. You can view and analyze the data directly in Google Sheets.
-
-## Troubleshooting
-
-- If the script fails to fetch data, ensure that your Shopify API key, password, and store name are correct.
-- Check the permissions granted to the script and ensure it has access to the necessary resources.
-- Verify the triggers are correctly set to run every 10 minutes.
-
-## License
-
-This project is licensed under the MIT License.
+This script is provided as-is without warranty of any kind. Use it at your own risk. Refer to the official Google Apps Script and Shopify API documentation for further details and advanced functionalities.
