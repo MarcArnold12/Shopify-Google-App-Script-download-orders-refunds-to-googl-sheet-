@@ -1,119 +1,122 @@
-// Your Shopify API keys (replace with your actual keys)
-const SHOPIFY_API_KEY = 'your_shopify_api_key';
-const SHOPIFY_PASSWORD = 'your_shopify_password';
-const SHOPIFY_STORE_NAME = 'your_shopify_store_name';  // Only the store name
+// Set your Shopify API credentials
+const SHOP_NAME = 'name';
+const ACCESS_TOKEN = 'acces token';
+const API_VERSION = '2023-07'; // Using a recent, stable version
 
-// Function to fetch orders from Shopify and save them to Google Sheets
-function fetchOrders() {
-  // URL to Shopify API for orders
-  const url = `https://${SHOPIFY_STORE_NAME}.myshopify.com/admin/api/2023-04/orders.json`;
+// Set the names of your sheets
+const ORDERS_SHEET_NAME = 'Orders';
+const REFUNDS_SHEET_NAME = 'Refunds';
 
-  // Request options
+function fetchShopifyData() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const ordersSheet = spreadsheet.getSheetByName(ORDERS_SHEET_NAME);
+  const refundsSheet = spreadsheet.getSheetByName(REFUNDS_SHEET_NAME);
+  
+  // Fetch orders and refunds
+  const orders = getShopifyOrders();
+  const refunds = getShopifyRefunds();
+  
+  // Update refunds first
+  updateRefundsSheet(refundsSheet, refunds);
+  
+  // Then update orders, removing any that have been refunded
+  updateOrdersSheet(ordersSheet, orders, refunds);
+}
+
+function getShopifyOrders() {
+  const url = `https://${SHOP_NAME}.myshopify.com/admin/api/${API_VERSION}/orders.json?status=any`;
   const options = {
     method: 'get',
     headers: {
-      'Authorization': 'Basic ' + Utilities.base64Encode(SHOPIFY_API_KEY + ':' + SHOPIFY_PASSWORD),
-      'Content-Type': 'application/json'
+      'X-Shopify-Access-Token': ACCESS_TOKEN
     }
   };
-
-  // Make the request to Shopify API
   const response = UrlFetchApp.fetch(url, options);
-  const json = JSON.parse(response.getContentText());
+  return JSON.parse(response.getContentText()).orders;
+}
 
-  // Get the whole Google Sheets spreadsheet named 'Shopify Automation'
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+function getShopifyRefunds() {
+  const url = `https://${SHOP_NAME}.myshopify.com/admin/api/${API_VERSION}/orders.json?status=any&financial_status=refunded`;
+  const options = {
+    method: 'get',
+    headers: {
+      'X-Shopify-Access-Token': ACCESS_TOKEN
+    }
+  };
+  const response = UrlFetchApp.fetch(url, options);
+  return JSON.parse(response.getContentText()).orders;
+}
+
+function updateOrdersSheet(sheet, orders, refunds) {
+  // Check if the sheet is empty
+  if (sheet.getLastRow() <= 1) {
+    // If empty, add headers
+    sheet.appendRow(['Order ID', 'Order Number', 'Email', 'Total Price', 'Created At']);
+  }
   
-  // Get the 'Orders' sheet, or create a new one if it doesn't exist
-  let ordersSheet = spreadsheet.getSheetByName('Orders');
-  if (!ordersSheet) {
-    ordersSheet = spreadsheet.insertSheet('Orders');
-  }
-
-  // Get the last row with data
-  const lastRow = ordersSheet.getLastRow();
-
-  const orders = json.orders; // List of orders
-
-  // Column headers, added only if the sheet is empty
-  if (lastRow === 0) {
-    const headers = ['Order ID', 'Email', 'Total Price', 'Created At'];
-    ordersSheet.appendRow(headers);
-  }
-
-  // Add order data to the sheet
+  const data = sheet.getDataRange().getValues();
+  const headers = data.shift(); // Remove and store headers
+  
+  // Create a set of refunded order IDs for quick lookup
+  const refundedOrderIds = new Set(refunds.map(refund => refund.id.toString()));
+  
+  // Filter out refunded orders and prepare new orders data
+  const updatedData = data.filter(row => !refundedOrderIds.has(row[0].toString()));
+  const existingOrderIds = new Set(updatedData.map(row => row[0].toString()));
+  
+  // Add new orders
   orders.forEach(order => {
-    ordersSheet.appendRow([order.id, order.email, order.total_price, order.created_at]);
-  });
-}
-
-// Function to fetch refunds from Shopify and save them to Google Sheets
-function fetchRefunds() {
-  // URL to Shopify API for refunds
-  const url = `https://${SHOPIFY_STORE_NAME}.myshopify.com/admin/api/2023-04/refunds.json`;
-
-  // Request options
-  const options = {
-    method: 'get',
-    headers: {
-      'Authorization': 'Basic ' + Utilities.base64Encode(SHOPIFY_API_KEY + ':' + SHOPIFY_PASSWORD),
-      'Content-Type': 'application/json'
+    if (!existingOrderIds.has(order.id.toString()) && !refundedOrderIds.has(order.id.toString())) {
+      updatedData.push([
+        order.id,
+        order.order_number,
+        order.email,
+        order.total_price,
+        order.created_at
+      ]);
     }
-  };
-
-  // Make the request to Shopify API
-  const response = UrlFetchApp.fetch(url, options);
-  const json = JSON.parse(response.getContentText());
-
-  // Get the whole Google Sheets spreadsheet named 'Shopify Automation'
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  });
   
-  // Get the 'Refunds' sheet, or create a new one if it doesn't exist
-  let refundsSheet = spreadsheet.getSheetByName('Refunds');
-  if (!refundsSheet) {
-    refundsSheet = spreadsheet.insertSheet('Refunds');
-  }
-
-  // Get the last row with data
-  const lastRow = refundsSheet.getLastRow();
-
-  const refunds = json.refunds; // List of refunds
-
-  // Column headers, added only if the sheet is empty
-  if (lastRow === 0) {
-    const headers = ['Refund ID', 'Order ID', 'Refunded At', 'Total Amount'];
-    refundsSheet.appendRow(headers);
-  }
-
-  // Add refund data to the sheet
-  refunds.forEach(refund => {
-    refundsSheet.appendRow([refund.id, refund.order_id, refund.processed_at, refund.transactions[0].amount]);
-  });
+  // Clear the sheet and rewrite with updated data
+  sheet.clear();
+  sheet.appendRow(headers);
+  sheet.getRange(2, 1, updatedData.length, headers.length).setValues(updatedData);
 }
 
-// Function to set up the schedule for fetching data
-function scheduleFetch() {
-  // Remove existing triggers for fetchOrders and fetchRefunds
-  const triggers = ScriptApp.getProjectTriggers();
-  triggers.forEach(trigger => {
-    const funcName = trigger.getHandlerFunction();
-    if (funcName === 'fetchOrders' || funcName === 'fetchRefunds') {
-      ScriptApp.deleteTrigger(trigger);
+function updateRefundsSheet(sheet, refunds) {
+  // Check if the sheet is empty
+  if (sheet.getLastRow() <= 1) {
+    // If empty, add headers
+    sheet.appendRow(['Order ID', 'Order Number', 'Email', 'Total Price', 'Created At']);
+  }
+  
+  const data = sheet.getDataRange().getValues();
+  const headers = data.shift(); // Remove and store headers
+  
+  const existingRefundIds = new Set(data.map(row => row[0].toString()));
+  
+  // Add new refunds
+  refunds.forEach(refund => {
+    if (!existingRefundIds.has(refund.id.toString())) {
+      data.push([
+        refund.id,
+        refund.order_number,
+        refund.email,
+        refund.total_price,
+        refund.created_at
+      ]);
     }
   });
+  
+  // Clear the sheet and rewrite with updated data
+  sheet.clear();
+  sheet.appendRow(headers);
+  sheet.getRange(2, 1, data.length, headers.length).setValues(data);
+}
 
-  // Set up the schedule to fetch orders every 10 minutes
-  ScriptApp.newTrigger('fetchOrders')
-    .timeBased()
-    .everyMinutes(10)
-    .create();
-
-  // Set up the schedule to fetch refunds every 10 minutes
-  ScriptApp.newTrigger('fetchRefunds')
+function setupTrigger() {
+  ScriptApp.newTrigger('fetchShopifyData')
     .timeBased()
     .everyMinutes(10)
     .create();
 }
-
-// Call the scheduleFetch function to set up the schedule
-scheduleFetch();
