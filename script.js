@@ -1,29 +1,37 @@
-// Set your Shopify API credentials
-const SHOP_NAME = 'name';
-const ACCESS_TOKEN = 'acces token';
-const API_VERSION = '2023-07'; // Using a recent, stable version
-
-// Set the names of your sheets
-const ORDERS_SHEET_NAME = 'Orders';
-const REFUNDS_SHEET_NAME = 'Refunds';
+function getShopifyCredentials() {
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const shopName = scriptProperties.getProperty('SHOP_NAME');
+  const accessToken = scriptProperties.getProperty('ACCESS_TOKEN');
+  if (!shopName || !accessToken) {
+    Logger.log('Error: SHOP_NAME or ACCESS_TOKEN is not defined in the project properties.');
+    throw new Error('SHOP_NAME or ACCESS_TOKEN is not defined in the project properties.');
+  }
+  return {
+    shopName: shopName,
+    accessToken: accessToken
+  };
+}
 
 function fetchShopifyData() {
+  const credentials = getShopifyCredentials();
+  const SHOP_NAME = credentials.shopName;
+  const ACCESS_TOKEN = credentials.accessToken;
+  const API_VERSION = '2023-07';
+
+  Logger.log(`Using SHOP_NAME: ${SHOP_NAME} and ACCESS_TOKEN: ${ACCESS_TOKEN}`);
+
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  const ordersSheet = spreadsheet.getSheetByName(ORDERS_SHEET_NAME);
-  const refundsSheet = spreadsheet.getSheetByName(REFUNDS_SHEET_NAME);
+  const ordersSheet = spreadsheet.getSheetByName('Orders');
+  const refundsSheet = spreadsheet.getSheetByName('Refunds');
   
-  // Fetch orders and refunds
-  const orders = getShopifyOrders();
-  const refunds = getShopifyRefunds();
+  const orders = getShopifyOrders(SHOP_NAME, ACCESS_TOKEN, API_VERSION);
+  const refunds = getShopifyRefunds(SHOP_NAME, ACCESS_TOKEN, API_VERSION);
   
-  // Update refunds first
   updateRefundsSheet(refundsSheet, refunds);
-  
-  // Then update orders, removing any that have been refunded
   updateOrdersSheet(ordersSheet, orders, refunds);
 }
 
-function getShopifyOrders() {
+function getShopifyOrders(SHOP_NAME, ACCESS_TOKEN, API_VERSION) {
   const url = `https://${SHOP_NAME}.myshopify.com/admin/api/${API_VERSION}/orders.json?status=any`;
   const options = {
     method: 'get',
@@ -35,7 +43,7 @@ function getShopifyOrders() {
   return JSON.parse(response.getContentText()).orders;
 }
 
-function getShopifyRefunds() {
+function getShopifyRefunds(SHOP_NAME, ACCESS_TOKEN, API_VERSION) {
   const url = `https://${SHOP_NAME}.myshopify.com/admin/api/${API_VERSION}/orders.json?status=any&financial_status=refunded`;
   const options = {
     method: 'get',
@@ -48,23 +56,16 @@ function getShopifyRefunds() {
 }
 
 function updateOrdersSheet(sheet, orders, refunds) {
-  // Check if the sheet is empty
   if (sheet.getLastRow() <= 1) {
-    // If empty, add headers
     sheet.appendRow(['Order ID', 'Order Number', 'Email', 'Total Price', 'Created At']);
   }
   
   const data = sheet.getDataRange().getValues();
-  const headers = data.shift(); // Remove and store headers
-  
-  // Create a set of refunded order IDs for quick lookup
+  const headers = data.shift();
   const refundedOrderIds = new Set(refunds.map(refund => refund.id.toString()));
-  
-  // Filter out refunded orders and prepare new orders data
   const updatedData = data.filter(row => !refundedOrderIds.has(row[0].toString()));
   const existingOrderIds = new Set(updatedData.map(row => row[0].toString()));
   
-  // Add new orders
   orders.forEach(order => {
     if (!existingOrderIds.has(order.id.toString()) && !refundedOrderIds.has(order.id.toString())) {
       updatedData.push([
@@ -77,25 +78,20 @@ function updateOrdersSheet(sheet, orders, refunds) {
     }
   });
   
-  // Clear the sheet and rewrite with updated data
   sheet.clear();
   sheet.appendRow(headers);
   sheet.getRange(2, 1, updatedData.length, headers.length).setValues(updatedData);
 }
 
 function updateRefundsSheet(sheet, refunds) {
-  // Check if the sheet is empty
   if (sheet.getLastRow() <= 1) {
-    // If empty, add headers
     sheet.appendRow(['Order ID', 'Order Number', 'Email', 'Total Price', 'Created At']);
   }
   
   const data = sheet.getDataRange().getValues();
-  const headers = data.shift(); // Remove and store headers
-  
+  const headers = data.shift();
   const existingRefundIds = new Set(data.map(row => row[0].toString()));
   
-  // Add new refunds
   refunds.forEach(refund => {
     if (!existingRefundIds.has(refund.id.toString())) {
       data.push([
@@ -108,7 +104,6 @@ function updateRefundsSheet(sheet, refunds) {
     }
   });
   
-  // Clear the sheet and rewrite with updated data
   sheet.clear();
   sheet.appendRow(headers);
   sheet.getRange(2, 1, data.length, headers.length).setValues(data);
